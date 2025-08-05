@@ -222,8 +222,7 @@
             gap: 6px;
         }
         .keyboard-key {
-            flex: 0 1 90px;
-            min-width: 90px;
+            flex: 1;
             height: 48px;
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -583,8 +582,9 @@
     };
     applyTheme(localStorage.getItem('darkMode') === 'true');
 
-    // --- История розыгрышей ---
+    // --- История розыгрышей и ставок ---
     let history = JSON.parse(localStorage.getItem('rapidoHistory') || '[]');
+    let bets = JSON.parse(localStorage.getItem('rapidoBets') || '[]');
     
     // Статистика выигрышей
     let winStats = JSON.parse(localStorage.getItem('rapidoWinStats') || JSON.stringify({
@@ -611,8 +611,20 @@
         '4,1': { amount: 25, label: '25 ₽' }
     };
 
-    // Последняя ставка
-    let lastBet = null;
+    // Сохраняем ставки
+    function saveBets() {
+        localStorage.setItem('rapidoBets', JSON.stringify(bets));
+    }
+
+    // Сохраняем статистику
+    function saveWinStats() {
+        localStorage.setItem('rapidoWinStats', JSON.stringify(winStats));
+    }
+
+    // Сохраняем историю
+    function saveHistory() {
+        localStorage.setItem('rapidoHistory', JSON.stringify(history));
+    }
 
     // --- Кастомная клавиатура ---
     const customKeyboard = document.getElementById('customKeyboard');
@@ -686,11 +698,6 @@
         if (!isInput && !isKeyboard) hideKeyboard();
     });
 
-    // Сохраняем статистику
-    function saveWinStats() {
-        localStorage.setItem('rapidoWinStats', JSON.stringify(winStats));
-    }
-
     // --- Отображение истории ---
     const historyList = document.getElementById('historyList');
     function renderHistory() {
@@ -745,9 +752,11 @@
     
     // Очистка истории
     document.getElementById('clearHistoryBtn').onclick = () => {
-        if(confirm('Очистить всю историю и статистику?')) {
+        if(confirm('Очистить всю историю, ставки и статистику?')) {
             history = [];
+            bets = [];
             saveHistory();
+            saveBets();
             renderHistory();
             updateStats();
             
@@ -762,10 +771,6 @@
             generateNumbers();
         }
     };
-
-    function saveHistory() {
-        localStorage.setItem('rapidoHistory', JSON.stringify(history));
-    }
 
     // --- Валидация ввода ---
     const validationError = document.getElementById('validationError');
@@ -834,14 +839,19 @@
         const result = {
             drawId,
             field1: nums1,
-            field2: num2
+            field2: num2,
+            timestamp: new Date().toISOString()
         };
         
-        // Проверяем, есть ли ставка для этого розыгрыша
-        if (lastBet) {
+        // Ищем ставку для этого тиража
+        const betIndex = bets.findIndex(bet => bet.drawId === drawId);
+        
+        if (betIndex !== -1) {
+            const bet = bets[betIndex];
+            
             // Сравниваем ставку с результатом
-            const matchedField1 = lastBet.numbers.field1.filter(n => nums1.includes(n)).length;
-            const matchedField2 = lastBet.numbers.field2 === num2 ? 1 : 0;
+            const matchedField1 = bet.numbers.field1.filter(n => nums1.includes(n)).length;
+            const matchedField2 = bet.numbers.field2 === num2 ? 1 : 0;
             
             const prizeKey = `${matchedField1},${matchedField2}`;
             const prize = prizeTable[prizeKey];
@@ -849,13 +859,17 @@
             if (prize) {
                 result.winAmount = prize.amount;
                 result.winType = prize.label;
-                result.betMethod = lastBet.method;
+                result.betMethod = bet.method;
                 
                 // Обновляем статистику
-                winStats[lastBet.method].wins++;
-                winStats[lastBet.method].won += prize.amount;
-                winStats[lastBet.method].balance = winStats[lastBet.method].won - winStats[lastBet.method].spent;
+                winStats[bet.method].wins++;
+                winStats[bet.method].won += prize.amount;
+                winStats[bet.method].balance = winStats[bet.method].won - winStats[bet.method].spent;
             }
+            
+            // Удаляем ставку после расчета выигрыша
+            bets.splice(betIndex, 1);
+            saveBets();
         }
         
         history.push(result);
@@ -868,9 +882,6 @@
         document.getElementById('drawId').value = '';
         document.getElementById('drawField1').value = '';
         document.getElementById('drawField2').value = '';
-        
-        // Сбрасываем последнюю ставку
-        lastBet = null;
     };
 
     // --- Статистика чисел ---
@@ -969,7 +980,7 @@
         saveWinStats();
     }
     
-    // --- Улучшенные методы генерации ---
+    // --- Методы генерации ---
     let currentMethod = 'cold';
     
     // Переключение методов
@@ -978,31 +989,62 @@
             document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentMethod = btn.dataset.method;
-            generateNumbers();
         });
     });
     
-    // Основная функция генерации
+    // Генерация чисел
     function generateNumbers() {
+        // Получаем следующий номер тиража
+        const lastDrawId = history.length > 0 
+            ? Math.max(...history.map(entry => parseInt(entry.drawId) || 0))
+            : 0;
+        const nextDrawId = lastDrawId + 1;
+        
+        let generatedNumbers;
         switch(currentMethod) {
-            case 'cold':
-                generateColdNumbers();
+            case 'ogneva': 
+                generatedNumbers = generateOgnevaNumbers(); 
                 break;
-            case 'ogneva':
-                generateOgnevaNumbers();
+            case 'karnaugh': 
+                generatedNumbers = generateKarnaughNumbers(); 
                 break;
-            case 'karnaugh':
-                generateKarnaughNumbers();
+            case 'anti': 
+                generatedNumbers = generateAntiNumbers(); 
                 break;
-            case 'anti':
-                generateAntiNumbers();
-                break;
-            default:
-                generateColdNumbers();
+            default: 
+                generatedNumbers = generateColdNumbers();
         }
+        
+        // Сохраняем ставку
+        const bet = {
+            drawId: nextDrawId.toString(),
+            method: currentMethod,
+            numbers: {
+                field1: [...generatedNumbers.nums1],
+                field2: generatedNumbers.num2
+            },
+            timestamp: new Date().toISOString()
+        };
+        
+        bets.push(bet);
+        saveBets();
+        
+        // Отображаем числа
+        displayNumbers(generatedNumbers.nums1, generatedNumbers.num2, currentMethod);
+        
+        // Увеличиваем счетчик ставок
+        if(winStats[currentMethod]) {
+            winStats[currentMethod].bets++;
+            winStats[currentMethod].spent += 100;
+            winStats[currentMethod].balance = winStats[currentMethod].won - winStats[currentMethod].spent;
+            updateWinStats();
+        }
+        
+        // Автоматически заполняем номер тиража
+        document.getElementById('drawId').value = nextDrawId;
     }
     
-    // Улучшенный метод холодных чисел
+    // Метод холодных чисел
     function generateColdNumbers() {
         const countField1 = Array(20).fill(0);
         const countField2 = Array(4).fill(0);
@@ -1015,8 +1057,10 @@
         });
 
         if(history.length === 0) {
-            generateRandomNumbers('cold');
-            return;
+            return {
+                nums1: generateRandomNumbers(),
+                num2: Math.floor(Math.random() * 4) + 1
+            };
         }
 
         // Выбираем 6 самых редких и 2 среднечастотных числа для первого поля
@@ -1036,14 +1080,13 @@
         numbers2.sort((a, b) => countField2[a - 1] - countField2[b - 1]);
         const selected2 = numbers2[0];
 
-        displayNumbers(selected1, selected2, 'cold');
+        return { nums1: selected1, num2: selected2 };
     }
     
-    // Улучшенный метод Огнева
+    // Метод Огнева
     function generateOgnevaNumbers() {
         if(history.length < 5) {
-            generateColdNumbers();
-            return;
+            return generateColdNumbers();
         }
         
         // Рассчитываем среднее характеристическое число
@@ -1077,14 +1120,13 @@
             }
         }
         
-        if(bestCombination) {
-            displayNumbers(bestCombination.nums1, bestCombination.num2, 'ogneva');
-        } else {
-            generateRandomNumbers('ogneva');
-        }
+        return bestCombination || { 
+            nums1: generateRandomNumbers(), 
+            num2: Math.floor(Math.random() * 4) + 1 
+        };
     }
     
-    // Улучшенный метод Карнауха
+    // Метод Карнауха
     function generateKarnaughNumbers() {
         const countField1 = Array(20).fill(0);
         const countField2 = Array(4).fill(0);
@@ -1097,8 +1139,7 @@
         });
 
         if(history.length < 10) {
-            generateColdNumbers();
-            return;
+            return generateColdNumbers();
         }
         
         // Сортируем числа по частоте выпадения
@@ -1116,15 +1157,15 @@
         numbers2.sort((a, b) => countField2[a - 1] - countField2[b - 1]);
         const selected2 = numbers2[1] || numbers2[0];
         
-        displayNumbers(selected1, selected2, 'karnaugh');
+        return { nums1: selected1, num2: selected2 };
     }
     
-    // Улучшенный антипрогноз
+    // Антипрогноз
     function generateAntiNumbers() {
         // Генерируем прогнозы другими методами
-        const coldNumbers = generateColdNumbers(true);
-        const ognevaNumbers = generateOgnevaNumbers(true);
-        const karnaughNumbers = generateKarnaughNumbers(true);
+        const coldNumbers = generateColdNumbers().nums1;
+        const ognevaNumbers = generateOgnevaNumbers().nums1;
+        const karnaughNumbers = generateKarnaughNumbers().nums1;
         
         // Собираем все числа, которые часто встречаются в прогнозах
         const popularNumbers = new Set([...coldNumbers, ...ognevaNumbers, ...karnaughNumbers]);
@@ -1158,20 +1199,17 @@
         
         const selected2 = leastFrequent[Math.floor(Math.random() * leastFrequent.length)] || 1;
         
-        displayNumbers(selected1, selected2, 'anti');
+        return { nums1: selected1, num2: selected2 };
     }
     
     // Случайная генерация (вспомогательная)
-    function generateRandomNumbers(method = 'random') {
+    function generateRandomNumbers() {
         const nums1 = [];
         while(nums1.length < 8) {
             const n = Math.floor(Math.random() * 20) + 1;
             if(!nums1.includes(n)) nums1.push(n);
         }
         nums1.sort((a, b) => a - b);
-        const n2 = Math.floor(Math.random() * 4) + 1;
-        
-        displayNumbers(nums1, n2, method);
         return nums1;
     }
     
@@ -1207,29 +1245,11 @@
             });
             div2.classList.add('selected');
         }, 100);
-        
-        // Сохраняем как последнюю ставку
-        lastBet = {
-            method: method,
-            numbers: {
-                field1: nums1,
-                field2: num2
-            }
-        };
-        
-        // Увеличиваем счетчик ставок
-        if(winStats[method]) {
-            winStats[method].bets++;
-            winStats[method].spent += 100;
-            winStats[method].balance = winStats[method].won - winStats[method].spent;
-            updateWinStats();
-        }
     }
 
     // --- Инициализация при загрузке ---
-    document.getElementById('genBtn').onclick = generateNumbers;
+    document.getElementById('genBtn').addEventListener('click', generateNumbers);
     updateStats();
-    generateNumbers();
     updateWinStats();
     renderHistory();
 </script>

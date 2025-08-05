@@ -226,8 +226,7 @@
             gap: 6px;
         }
         .keyboard-key {
-            flex: 0 1 70px;
-            min-width: 70px;
+            flex: 1;
             height: 48px;
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -517,13 +516,20 @@
     applyTheme(localStorage.getItem('darkMode') === 'true');
 
     // --- История розыгрышей ---
-    let history = JSON.parse(localStorage.getItem('rapidoHistory') || '[]');
+    let history = JSON.parse(localStorage.getItem('rapidoHistory') || []);
+    
+    // Статистика выигрышей
     let winStats = JSON.parse(localStorage.getItem('rapidoWinStats') || JSON.stringify({
         cold: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
         ogneva: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
         karnaugh: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
         anti: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 }
     }));
+    
+    // Исправление: парсим статистику, если она в формате строки
+    if (typeof winStats === 'string') {
+        winStats = JSON.parse(winStats);
+    }
 
     // --- Кастомная клавиатура ---
     const customKeyboard = document.getElementById('customKeyboard');
@@ -663,12 +669,21 @@
     
     // Очистка истории
     document.getElementById('clearHistoryBtn').onclick = () => {
-        if(confirm('Очистить всю историю?')) {
+        if(confirm('Очистить всю историю и статистику?')) {
             history = [];
             saveHistory();
             renderHistory();
             updateStats();
             generateNumbers();
+            
+            // Сбрасываем статистику выигрышей
+            winStats = {
+                cold: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
+                ogneva: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
+                karnaugh: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
+                anti: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 }
+            };
+            saveWinStats();
             updateWinStats();
         }
     };
@@ -851,6 +866,7 @@
     
     // --- Методы генерации ---
     let currentMethod = 'cold';
+    let lastBet = null; // Хранит последний прогноз
     
     // Переключение методов
     document.querySelectorAll('.method-btn').forEach(btn => {
@@ -879,14 +895,6 @@
                 break;
             default:
                 generateColdNumbers();
-        }
-        
-        // Увеличиваем счетчик ставок
-        if(winStats[currentMethod]) {
-            winStats[currentMethod].bets++;
-            winStats[currentMethod].spent += 100; // стоимость ставки
-            winStats[currentMethod].balance = winStats[currentMethod].won - winStats[currentMethod].spent;
-            updateWinStats();
         }
     }
     
@@ -1089,15 +1097,22 @@
             div2.classList.add('selected');
         }, 100);
         
-        // Сохраняем в историю с меткой метода
-        history.push({
-            drawId: 'Прогноз',
-            field1: nums1,
-            field2: num2,
-            method: method
-        });
-        saveHistory();
-        renderHistory();
+        // Сохраняем как последний прогноз
+        lastBet = {
+            method: method,
+            numbers: {
+                field1: nums1,
+                field2: num2
+            }
+        };
+        
+        // Увеличиваем счетчик ставок
+        if(winStats[method]) {
+            winStats[method].bets++;
+            winStats[method].spent += 100;
+            winStats[method].balance = winStats[method].won - winStats[method].spent;
+            updateWinStats();
+        }
     }
 
     // --- Инициализация при загрузке ---

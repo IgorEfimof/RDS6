@@ -382,6 +382,30 @@
             background: var(--card-bg);
             color: var(--text-color);
         }
+        /* Добавлено для кастомной клавиатуры */
+        .input-field {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            font-size: 15px;
+            margin-bottom: 5px;
+        }
+        .input-field:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+            outline: none;
+        }
+        .keyboard-key.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .keyboard-container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body>
@@ -413,15 +437,15 @@
             <div class="draw-inputs">
                 <div class="draw-input">
                     <label>Тираж</label>
-                    <input type="number" id="drawId" placeholder="Номер тиража" min="1">
+                    <input type="text" id="drawId" class="input-field" placeholder="Номер тиража" readonly>
                 </div>
                 <div class="draw-input">
                     <label>Поле 1 (8 чисел)</label>
-                    <input type="text" id="drawField1" placeholder="1,2,3,4,5,6,7,8">
+                    <input type="text" id="drawField1" class="input-field" placeholder="1,2,3,4,5,6,7,8" readonly>
                 </div>
                 <div class="draw-input">
                     <label>Поле 2 (1 число)</label>
-                    <input type="number" id="drawField2" placeholder="1" min="1" max="4">
+                    <input type="text" id="drawField2" class="input-field" placeholder="1" readonly>
                 </div>
             </div>
             <div id="validationError" class="validation-error"></div>
@@ -444,6 +468,31 @@
             <h2>История розыгрышей</h2>
             <div id="historyList"></div>
             <button id="clearHistoryBtn" class="secondary">Очистить историю</button>
+        </div>
+    </div>
+
+    <!-- Кастомная клавиатура -->
+    <div class="custom-keyboard" id="customKeyboard">
+        <div class="keyboard-container">
+            <div class="keyboard-row">
+                <div class="keyboard-key" data-key="1">1</div>
+                <div class="keyboard-key" data-key="2">2</div>
+                <div class="keyboard-key" data-key="3">3</div>
+                <div class="keyboard-key" data-key="4">4</div>
+                <div class="keyboard-key" data-key="5">5</div>
+            </div>
+            <div class="keyboard-row">
+                <div class="keyboard-key" data-key="6">6</div>
+                <div class="keyboard-key" data-key="7">7</div>
+                <div class="keyboard-key" data-key="8">8</div>
+                <div class="keyboard-key" data-key="9">9</div>
+                <div class="keyboard-key" data-key="0">0</div>
+            </div>
+            <div class="keyboard-row">
+                <div class="keyboard-key" data-key=",">,</div>
+                <div class="keyboard-key red" data-key="backspace">⌫</div>
+                <div class="keyboard-key blue" data-key="done">Готово</div>
+            </div>
         </div>
     </div>
 
@@ -474,6 +523,92 @@
         karnaugh: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
         anti: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 }
     }));
+
+    // --- Кастомная клавиатура ---
+    const customKeyboard = document.getElementById('customKeyboard');
+    let currentInput = null;
+
+    // Инициализация клавиатуры
+    document.querySelectorAll('.keyboard-key').forEach(key => {
+        key.addEventListener('click', () => {
+            const keyValue = key.dataset.key;
+            handleKeyPress(keyValue);
+        });
+    });
+
+    // Обработка нажатий клавиш
+    function handleKeyPress(key) {
+        if (!currentInput) return;
+        
+        const value = currentInput.value;
+        
+        switch (key) {
+            case 'backspace':
+                currentInput.value = value.slice(0, -1);
+                break;
+            case 'done':
+                hideKeyboard();
+                break;
+            case ',':
+                // Для поля 1 разрешаем запятую только если она нужна
+                if (currentInput.id === 'drawField1') {
+                    // Проверяем, что запятая уместна
+                    if (value.length > 0 && !value.endsWith(',') && value.split(',').length < 8) {
+                        currentInput.value += ',';
+                    }
+                }
+                break;
+            default:
+                // Для разных полей разные правила
+                if (currentInput.id === 'drawField2') {
+                    // Поле 2: только одна цифра от 1 до 4
+                    if (['1','2','3','4'].includes(key)) {
+                        currentInput.value = key;
+                    }
+                } else if (currentInput.id === 'drawId') {
+                    // Только цифры для тиража
+                    if (key >= '0' && key <= '9') {
+                        currentInput.value += key;
+                    }
+                } else {
+                    // Для поля 1 и других
+                    currentInput.value += key;
+                }
+        }
+    }
+
+    // Показать клавиатуру
+    function showKeyboard(input) {
+        currentInput = input;
+        customKeyboard.style.display = 'flex';
+        input.classList.add('input-active');
+    }
+
+    // Скрыть клавиатуру
+    function hideKeyboard() {
+        if (currentInput) {
+            currentInput.classList.remove('input-active');
+            currentInput = null;
+        }
+        customKeyboard.style.display = 'none';
+    }
+
+    // Обработчики для полей ввода
+    document.getElementById('drawId').addEventListener('focus', () => showKeyboard(document.getElementById('drawId')));
+    document.getElementById('drawField1').addEventListener('focus', () => showKeyboard(document.getElementById('drawField1')));
+    document.getElementById('drawField2').addEventListener('focus', () => showKeyboard(document.getElementById('drawField2')));
+
+    // Скрытие клавиатуры при клике вне полей ввода
+    document.addEventListener('click', (e) => {
+        if (!currentInput) return;
+        
+        const isInput = e.target.classList.contains('input-field');
+        const isKeyboard = e.target.closest('.custom-keyboard');
+        
+        if (!isInput && !isKeyboard) {
+            hideKeyboard();
+        }
+    });
 
     // Сохраняем статистику
     function saveWinStats() {

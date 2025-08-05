@@ -3,10 +3,6 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon180.png">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="RDS6">
-    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Рапидо Старт</title>
     <style>
         :root {
@@ -226,8 +222,7 @@
             gap: 6px;
         }
         .keyboard-key {
-            flex: 0 1 80px;
-            min-width: 80px;
+            flex: 1;
             height: 48px;
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -407,6 +402,24 @@
             max-width: 500px;
             margin: 0 auto;
         }
+        .prize-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .prize-table th, .prize-table td {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        .prize-table th {
+            background-color: rgba(0,102,204,0.1);
+        }
+        .jackpot {
+            background-color: rgba(255,215,0,0.2);
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -415,7 +428,7 @@
     <div class="container">
         <div class="card">
             <h1>Рапидо Старт</h1>
-            <p class="subtitle">Анализ с методами Огнева и Карнауха</p>
+            <p class="subtitle">Анализ с улучшенными методами прогнозирования</p>
         </div>
         
         <div class="card">
@@ -460,9 +473,63 @@
         
         <div class="card">
             <h2>Статистика выигрышей</h2>
-            <div class="win-stats" id="winStats">
-                <!-- Статистика будет заполнена скриптом -->
-            </div>
+            <div class="win-stats" id="winStats"></div>
+        </div>
+        
+        <div class="card">
+            <h2>Таблица выигрышей</h2>
+            <table class="prize-table">
+                <tr>
+                    <th>Угадано в 1 поле</th>
+                    <th>Угадано во 2 поле</th>
+                    <th>Выигрыш</th>
+                </tr>
+                <tr class="jackpot">
+                    <td>8</td>
+                    <td>1</td>
+                    <td>Суперприз</td>
+                </tr>
+                <tr>
+                    <td>8</td>
+                    <td>0</td>
+                    <td>25 000 ₽</td>
+                </tr>
+                <tr>
+                    <td>7</td>
+                    <td>1</td>
+                    <td>5 000 ₽</td>
+                </tr>
+                <tr>
+                    <td>7</td>
+                    <td>0</td>
+                    <td>1 000 ₽</td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>1</td>
+                    <td>175 ₽</td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>0</td>
+                    <td>150 ₽</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>1</td>
+                    <td>100 ₽</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>0</td>
+                    <td>50 ₽</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>1</td>
+                    <td>25 ₽</td>
+                </tr>
+            </table>
         </div>
         
         <div class="card" style="max-height: 300px; overflow-y: auto;">
@@ -513,11 +580,10 @@
         const dark = document.documentElement.classList.contains('dark-mode');
         applyTheme(!dark);
     };
-    // Инициализация темы
     applyTheme(localStorage.getItem('darkMode') === 'true');
 
     // --- История розыгрышей ---
-    let history = JSON.parse(localStorage.getItem('rapidoHistory') || []);
+    let history = JSON.parse(localStorage.getItem('rapidoHistory') || '[]');
     
     // Статистика выигрышей
     let winStats = JSON.parse(localStorage.getItem('rapidoWinStats') || JSON.stringify({
@@ -527,10 +593,25 @@
         anti: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 }
     }));
     
-    // Исправление: парсим статистику, если она в формате строки
     if (typeof winStats === 'string') {
         winStats = JSON.parse(winStats);
     }
+
+    // Таблица выигрышей
+    const prizeTable = {
+        '8,1': { amount: 5000000, label: 'Суперприз' },
+        '8,0': { amount: 25000, label: '25 000 ₽' },
+        '7,1': { amount: 5000, label: '5 000 ₽' },
+        '7,0': { amount: 1000, label: '1 000 ₽' },
+        '6,1': { amount: 175, label: '175 ₽' },
+        '6,0': { amount: 150, label: '150 ₽' },
+        '5,1': { amount: 100, label: '100 ₽' },
+        '5,0': { amount: 50, label: '50 ₽' },
+        '4,1': { amount: 25, label: '25 ₽' }
+    };
+
+    // Последняя ставка
+    let lastBet = null;
 
     // --- Кастомная клавиатура ---
     const customKeyboard = document.getElementById('customKeyboard');
@@ -558,41 +639,32 @@
                 hideKeyboard();
                 break;
             case ',':
-                // Для поля 1 разрешаем запятую только если она нужна
-                if (currentInput.id === 'drawField1') {
-                    // Проверяем, что запятая уместна
-                    if (value.length > 0 && !value.endsWith(',') && value.split(',').length < 8) {
-                        currentInput.value += ',';
-                    }
+                if (currentInput.id === 'drawField1' && value.split(',').length < 8) {
+                    currentInput.value += ',';
                 }
                 break;
             default:
-                // Для разных полей разные правила
                 if (currentInput.id === 'drawField2') {
-                    // Поле 2: только одна цифра от 1 до 4
                     if (['1','2','3','4'].includes(key)) {
                         currentInput.value = key;
                     }
                 } else if (currentInput.id === 'drawId') {
-                    // Только цифры для тиража
                     if (key >= '0' && key <= '9') {
                         currentInput.value += key;
                     }
                 } else {
-                    // Для поля 1 и других
                     currentInput.value += key;
                 }
         }
     }
 
-    // Показать клавиатуру
+    // Показать/скрыть клавиатуру
     function showKeyboard(input) {
         currentInput = input;
         customKeyboard.style.display = 'flex';
         input.classList.add('input-active');
     }
 
-    // Скрыть клавиатуру
     function hideKeyboard() {
         if (currentInput) {
             currentInput.classList.remove('input-active');
@@ -606,16 +678,11 @@
     document.getElementById('drawField1').addEventListener('focus', () => showKeyboard(document.getElementById('drawField1')));
     document.getElementById('drawField2').addEventListener('focus', () => showKeyboard(document.getElementById('drawField2')));
 
-    // Скрытие клавиатуры при клике вне полей ввода
     document.addEventListener('click', (e) => {
         if (!currentInput) return;
-        
         const isInput = e.target.classList.contains('input-field');
         const isKeyboard = e.target.closest('.custom-keyboard');
-        
-        if (!isInput && !isKeyboard) {
-            hideKeyboard();
-        }
+        if (!isInput && !isKeyboard) hideKeyboard();
     });
 
     // Сохраняем статистику
@@ -644,11 +711,18 @@
                 methodTag = `<span class="method-tag ${tagClass}">${tagText}</span>`;
             }
             
+            // Добавляем информацию о выигрыше, если она есть
+            let winInfo = '';
+            if (entry.winAmount) {
+                winInfo = `<span style="color: var(--win-color); font-weight: bold; margin-left: 5px;">+${entry.winAmount} ₽</span>`;
+            }
+            
             div.innerHTML = `
                 <div>
                     <strong>Тираж ${entry.drawId}:</strong> 
                     ${entry.field1.join(',')} | ${entry.field2}
                     ${methodTag}
+                    ${winInfo}
                 </div>
                 <button data-idx="${idx}">X</button>
             `;
@@ -675,9 +749,7 @@
             saveHistory();
             renderHistory();
             updateStats();
-            generateNumbers();
             
-            // Сбрасываем статистику выигрышей
             winStats = {
                 cold: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
                 ogneva: { bets: 0, wins: 0, spent: 0, won: 0, balance: 0 },
@@ -686,6 +758,7 @@
             };
             saveWinStats();
             updateWinStats();
+            generateNumbers();
         }
     };
 
@@ -756,24 +829,47 @@
         
         const { drawId, nums1, num2 } = validData;
         
-        history.push({
+        // Создаем объект результата розыгрыша
+        const result = {
             drawId,
             field1: nums1,
             field2: num2
-        });
+        };
         
+        // Проверяем, есть ли ставка для этого розыгрыша
+        if (lastBet) {
+            // Сравниваем ставку с результатом
+            const matchedField1 = lastBet.numbers.field1.filter(n => nums1.includes(n)).length;
+            const matchedField2 = lastBet.numbers.field2 === num2 ? 1 : 0;
+            
+            const prizeKey = `${matchedField1},${matchedField2}`;
+            const prize = prizeTable[prizeKey];
+            
+            if (prize) {
+                result.winAmount = prize.amount;
+                result.winType = prize.label;
+                result.betMethod = lastBet.method;
+                
+                // Обновляем статистику
+                winStats[lastBet.method].wins++;
+                winStats[lastBet.method].won += prize.amount;
+                winStats[lastBet.method].balance = winStats[lastBet.method].won - winStats[lastBet.method].spent;
+            }
+        }
+        
+        history.push(result);
         saveHistory();
         renderHistory();
         updateStats();
-        
-        // Обновляем генерацию после добавления
-        generateNumbers();
         updateWinStats();
         
         // Очищаем поля ввода
         document.getElementById('drawId').value = '';
         document.getElementById('drawField1').value = '';
         document.getElementById('drawField2').value = '';
+        
+        // Сбрасываем последнюю ставку
+        lastBet = null;
     };
 
     // --- Статистика чисел ---
@@ -835,6 +931,7 @@
         for(const [method, data] of Object.entries(winStats)) {
             const methodData = methods[method];
             const winRate = data.bets ? Math.round((data.wins / data.bets) * 100) : 0;
+            const roi = data.spent ? Math.round((data.won / data.spent) * 100) : 0;
             
             const statCard = document.createElement('div');
             statCard.className = 'stat-card';
@@ -858,6 +955,12 @@
                     <div class="stat-value">${data.balance} ₽</div>
                     <div class="stat-label">Баланс</div>
                 </div>
+                
+                <div style="margin-top: 5px; font-size: 0.8rem;">
+                    <div>Потрачено: ${data.spent} ₽</div>
+                    <div>Выиграно: ${data.won} ₽</div>
+                    <div>ROI: ${roi}%</div>
+                </div>
             `;
             winStatsContainer.appendChild(statCard);
         }
@@ -865,9 +968,8 @@
         saveWinStats();
     }
     
-    // --- Методы генерации ---
+    // --- Улучшенные методы генерации ---
     let currentMethod = 'cold';
-    let lastBet = null; // Хранит последний прогноз
     
     // Переключение методов
     document.querySelectorAll('.method-btn').forEach(btn => {
@@ -899,7 +1001,7 @@
         }
     }
     
-    // Метод холодных чисел
+    // Улучшенный метод холодных чисел
     function generateColdNumbers() {
         const countField1 = Array(20).fill(0);
         const countField2 = Array(4).fill(0);
@@ -916,10 +1018,17 @@
             return;
         }
 
-        // Выбираем 8 самых редких чисел для первого поля
+        // Выбираем 6 самых редких и 2 среднечастотных числа для первого поля
         let numbers1 = Array.from({ length: 20 }, (_, i) => i + 1);
         numbers1.sort((a, b) => countField1[a - 1] - countField1[b - 1]);
-        const selected1 = numbers1.slice(0, 8).sort((a, b) => a - b);
+        
+        // Берем 6 самых холодных
+        const coldNumbers = numbers1.slice(0, 6);
+        
+        // Берем 2 среднечастотных (из середины списка)
+        const mediumNumbers = numbers1.slice(9, 11);
+        
+        const selected1 = [...coldNumbers, ...mediumNumbers].sort((a, b) => a - b);
 
         // Для второго поля выбираем самое редкое число
         let numbers2 = Array.from({ length: 4 }, (_, i) => i + 1);
@@ -929,7 +1038,7 @@
         displayNumbers(selected1, selected2, 'cold');
     }
     
-    // Метод Огнева (характеристическое число)
+    // Улучшенный метод Огнева
     function generateOgnevaNumbers() {
         if(history.length < 5) {
             generateColdNumbers();
@@ -948,7 +1057,7 @@
         let bestCombination = null;
         let bestDiff = Infinity;
         
-        for(let i = 0; i < 50; i++) {
+        for(let i = 0; i < 100; i++) {
             const nums1 = [];
             while(nums1.length < 8) {
                 const n = Math.floor(Math.random() * 20) + 1;
@@ -974,7 +1083,7 @@
         }
     }
     
-    // Метод Карнауха (комбинация холодных и горячих чисел)
+    // Улучшенный метод Карнауха
     function generateKarnaughNumbers() {
         const countField1 = Array(20).fill(0);
         const countField2 = Array(4).fill(0);
@@ -995,10 +1104,11 @@
         let numbers1 = Array.from({ length: 20 }, (_, i) => i + 1);
         numbers1.sort((a, b) => countField1[a - 1] - countField1[b - 1]);
         
-        // Выбираем 5 холодных и 3 горячих числа
-        const coldNumbers = numbers1.slice(0, 5);
+        // Выбираем 4 холодных, 3 горячих и 1 среднее число
+        const coldNumbers = numbers1.slice(0, 4);
         const hotNumbers = numbers1.slice(-3).reverse();
-        const selected1 = [...coldNumbers, ...hotNumbers].sort((a, b) => a - b);
+        const mediumNumbers = [numbers1[10]];
+        const selected1 = [...coldNumbers, ...hotNumbers, ...mediumNumbers].sort((a, b) => a - b);
         
         // Для второго поля выбираем среднее по частоте
         let numbers2 = Array.from({ length: 4 }, (_, i) => i + 1);
@@ -1008,47 +1118,46 @@
         displayNumbers(selected1, selected2, 'karnaugh');
     }
     
-    // Антипрогноз
+    // Улучшенный антипрогноз
     function generateAntiNumbers() {
         // Генерируем прогнозы другими методами
         const coldNumbers = generateColdNumbers(true);
         const ognevaNumbers = generateOgnevaNumbers(true);
         const karnaughNumbers = generateKarnaughNumbers(true);
         
-        // Попробуем найти комбинацию, отличную от других методов
-        let attempt = 0;
-        while(attempt < 100) {
-            const nums1 = [];
-            while(nums1.length < 8) {
-                const n = Math.floor(Math.random() * 20) + 1;
-                if(!nums1.includes(n)) nums1.push(n);
+        // Собираем все числа, которые часто встречаются в прогнозах
+        const popularNumbers = new Set([...coldNumbers, ...ognevaNumbers, ...karnaughNumbers]);
+        
+        // Генерируем комбинацию из наименее популярных чисел
+        let numbers1 = Array.from({ length: 20 }, (_, i) => i + 1);
+        numbers1 = numbers1.filter(n => !popularNumbers.has(n));
+        
+        // Если не хватает чисел, добавляем случайные
+        while(numbers1.length < 8) {
+            const randomNum = Math.floor(Math.random() * 20) + 1;
+            if(!numbers1.includes(randomNum)) {
+                numbers1.push(randomNum);
             }
-            nums1.sort((a, b) => a - b);
-            const num2 = Math.floor(Math.random() * 4) + 1;
-            
-            // Проверяем, отличается ли от других методов
-            const isDifferent = 
-                !isSimilar(nums1, coldNumbers) &&
-                !isSimilar(nums1, ognevaNumbers) &&
-                !isSimilar(nums1, karnaughNumbers);
-            
-            if(isDifferent) {
-                displayNumbers(nums1, num2, 'anti');
-                return;
-            }
-            
-            attempt++;
         }
         
-        // Если не нашли уникальную, возвращаем случайную
-        generateRandomNumbers('anti');
-    }
-    
-    // Проверка схожести комбинаций
-    function isSimilar(arr1, arr2) {
-        if(!arr1 || !arr2) return false;
-        const common = arr1.filter(n => arr2.includes(n)).length;
-        return common >= 5; // если совпадают 5 и более чисел
+        // Выбираем 8 чисел
+        const selected1 = numbers1.slice(0, 8).sort((a, b) => a - b);
+        
+        // Для второго поля выбираем число, которое реже всего выпадало
+        const countField2 = Array(4).fill(0);
+        history.forEach(entry => {
+            if(entry.field2 >= 1 && entry.field2 <= 4) countField2[entry.field2 - 1]++;
+        });
+        
+        let minCount = Math.min(...countField2);
+        let leastFrequent = [];
+        countField2.forEach((count, idx) => {
+            if(count === minCount) leastFrequent.push(idx + 1);
+        });
+        
+        const selected2 = leastFrequent[Math.floor(Math.random() * leastFrequent.length)] || 1;
+        
+        displayNumbers(selected1, selected2, 'anti');
     }
     
     // Случайная генерация (вспомогательная)
@@ -1098,7 +1207,7 @@
             div2.classList.add('selected');
         }, 100);
         
-        // Сохраняем как последний прогноз
+        // Сохраняем как последнюю ставку
         lastBet = {
             method: method,
             numbers: {
